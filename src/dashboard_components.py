@@ -96,7 +96,7 @@ def efficiency_gauge(
     )])
     
     fig.update_layout(height=400, margin=dict(l=15, r=15, t=15, b=15))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def efficiency_distribution_pie(
@@ -130,7 +130,7 @@ def efficiency_distribution_pie(
         margin=dict(l=15, r=15, t=40, b=15),
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def machine_health_heatmap(
@@ -169,7 +169,7 @@ def machine_health_heatmap(
         xaxis_title='Machine ID',
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def time_series_plot(
@@ -212,7 +212,7 @@ def time_series_plot(
         margin=dict(l=15, r=15, t=40, b=15),
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def comparison_bar_chart(
@@ -234,24 +234,54 @@ def comparison_bar_chart(
         color_col: Column for color coding
         orientation: 'v' for vertical, 'h' for horizontal
     """
-    fig = px.bar(
-        data,
-        x=x_col if orientation == 'v' else y_col,
-        y=y_col if orientation == 'v' else x_col,
-        color=color_col,
-        title=title,
-        labels={x_col: x_col, y_col: y_col},
-        orientation=orientation,
-        color_discrete_sequence=px.colors.sequential.Blues_r
-    )
+    plot_data = data.copy()
+    if x_col in plot_data.columns and pd.api.types.is_categorical_dtype(plot_data[x_col]):
+        plot_data[x_col] = plot_data[x_col].astype(str)
+    if color_col is not None and color_col in plot_data.columns:
+        plot_data[color_col] = plot_data[color_col].astype(str)
+
+    if color_col is not None and color_col in plot_data.columns:
+        traces = []
+        for category in plot_data[color_col].unique():
+            subset = plot_data[plot_data[color_col] == category]
+            if orientation == 'v':
+                traces.append(
+                    go.Bar(
+                        name=str(category),
+                        x=subset[x_col],
+                        y=subset[y_col]
+                    )
+                )
+            else:
+                traces.append(
+                    go.Bar(
+                        name=str(category),
+                        x=subset[y_col],
+                        y=subset[x_col],
+                        orientation='h'
+                    )
+                )
+        fig = go.Figure(data=traces)
+        fig.update_layout(barmode='group')
+    else:
+        fig = px.bar(
+            plot_data,
+            x=x_col if orientation == 'v' else y_col,
+            y=y_col if orientation == 'v' else x_col,
+            title=title,
+            labels={x_col: x_col, y_col: y_col},
+            orientation=orientation,
+            color_discrete_sequence=px.colors.sequential.Blues_r
+        )
     
     fig.update_layout(
+        title=title,
         height=400,
         margin=dict(l=15, r=15, t=40, b=15),
         hovermode='closest',
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def scatter_plot(
@@ -275,25 +305,89 @@ def scatter_plot(
         color_col: Column for color coding
         size_max: Maximum bubble size
     """
-    fig = px.scatter(
-        data,
-        x=x_col,
-        y=y_col,
-        size=size_col,
-        color=color_col,
-        title=title,
-        size_max=size_max,
-        color_continuous_scale='Viridis' if color_col else None,
-        hover_data={'Machine_ID': True} if 'Machine_ID' in data.columns else None
-    )
-    
+    plot_data = data.copy()
+    if x_col in plot_data.columns and pd.api.types.is_categorical_dtype(plot_data[x_col]):
+        plot_data[x_col] = plot_data[x_col].astype(str)
+    if y_col in plot_data.columns and pd.api.types.is_categorical_dtype(plot_data[y_col]):
+        plot_data[y_col] = plot_data[y_col].astype(str)
+    if color_col is not None and color_col in plot_data.columns and pd.api.types.is_categorical_dtype(plot_data[color_col]):
+        plot_data[color_col] = plot_data[color_col].astype(str)
+
+    marker_sizes = pd.Series(8.0, index=plot_data.index)
+    if size_col is not None and size_col in plot_data.columns and pd.api.types.is_numeric_dtype(plot_data[size_col]):
+        sizes = plot_data[size_col].fillna(0).astype(float)
+        if sizes.max() > sizes.min():
+            normalized = (sizes - sizes.min()) / (sizes.max() - sizes.min())
+            marker_sizes = 5 + normalized * (size_max - 5)
+        else:
+            marker_sizes = pd.Series(float(size_max) / 2, index=plot_data.index)
+
+    fig = go.Figure()
+    hover_cols = []
+    if 'Machine_ID' in plot_data.columns:
+        hover_cols.append('Machine_ID')
+    if size_col is not None and size_col in plot_data.columns:
+        hover_cols.append(size_col)
+
+    if color_col is not None and color_col in plot_data.columns:
+        categories = plot_data[color_col].astype(str).unique()
+        palette = px.colors.qualitative.Dark24
+        for idx, category in enumerate(categories):
+            subset = plot_data[plot_data[color_col].astype(str) == category]
+            customdata = subset[hover_cols].to_numpy() if hover_cols else None
+            hovertemplate = f"<b>{x_col}</b>: %{{x}}<br><b>{y_col}</b>: %{{y}}"
+            if 'Machine_ID' in hover_cols:
+                hovertemplate += '<br><b>Machine_ID</b>: %{customdata[0]}'
+            if size_col in hover_cols:
+                hovertemplate += f'<br><b>{size_col}</b>: %{{customdata[{hover_cols.index(size_col)}]}}'
+            hovertemplate += '<extra></extra>'
+
+            fig.add_trace(go.Scatter(
+                x=subset[x_col],
+                y=subset[y_col],
+                mode='markers',
+                name=str(category),
+                marker=dict(
+                    size=marker_sizes.loc[subset.index],
+                    color=palette[idx % len(palette)],
+                    sizemode='area',
+                ),
+                customdata=customdata,
+                hovertemplate=hovertemplate,
+            ))
+    else:
+        customdata = plot_data[hover_cols].to_numpy() if hover_cols else None
+        hovertemplate = f"<b>{x_col}</b>: %{{x}}<br><b>{y_col}</b>: %{{y}}"
+        if 'Machine_ID' in hover_cols:
+            hovertemplate += '<br><b>Machine_ID</b>: %{customdata[0]}'
+        if size_col in hover_cols:
+            hovertemplate += f'<br><b>{size_col}</b>: %{{customdata[{hover_cols.index(size_col)}]}}'
+        hovertemplate += '<extra></extra>'
+
+        fig.add_trace(go.Scatter(
+            x=plot_data[x_col],
+            y=plot_data[y_col],
+            mode='markers',
+            marker=dict(
+                size=marker_sizes,
+                color=CHART_COLORS['primary'],
+                sizemode='area',
+            ),
+            customdata=customdata,
+            hovertemplate=hovertemplate,
+            name=y_col,
+        ))
+
     fig.update_layout(
+        title=title,
         height=400,
         margin=dict(l=15, r=15, t=40, b=15),
         hovermode='closest',
+        xaxis_title=x_col,
+        yaxis_title=y_col,
     )
-    
-    st.plotly_chart(fig, use_container_width=True)
+
+    st.plotly_chart(fig, width='stretch')
 
 
 def distribution_histogram(
@@ -326,7 +420,7 @@ def distribution_histogram(
         margin=dict(l=15, r=15, t=40, b=15),
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def box_plot(
@@ -360,7 +454,7 @@ def box_plot(
         margin=dict(l=15, r=15, t=40, b=15),
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def correlation_heatmap(
@@ -394,7 +488,7 @@ def correlation_heatmap(
         margin=dict(l=100, r=15, t=40, b=100),
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def create_sidebar_filters(data: pd.DataFrame) -> Tuple[List[int], List[str], Tuple]:

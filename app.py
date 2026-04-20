@@ -533,7 +533,7 @@ def main():
         if display_cols:
             st.dataframe(
                 filtered_data.iloc[start_idx:end_idx][display_cols],
-                use_container_width=True,
+                width='stretch',
                 height=400
             )
         

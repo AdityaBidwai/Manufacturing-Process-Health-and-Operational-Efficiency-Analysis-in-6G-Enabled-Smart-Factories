@@ -75,13 +75,13 @@ class DataProcessor:
             object_cols = self.data.select_dtypes(include=['object']).columns
             
             if strategy == 'forward_fill':
-                self.data[numeric_cols] = self.data[numeric_cols].fillna(method='ffill', limit=5)
-                self.data[numeric_cols] = self.data[numeric_cols].fillna(method='bfill')
-                self.data[object_cols] = self.data[object_cols].fillna(method='ffill')
+                self.data[numeric_cols] = self.data[numeric_cols].ffill(limit=5)
+                self.data[numeric_cols] = self.data[numeric_cols].bfill()
+                self.data[object_cols] = self.data[object_cols].ffill()
             
             elif strategy == 'backward_fill':
-                self.data[numeric_cols] = self.data[numeric_cols].fillna(method='bfill', limit=5)
-                self.data[numeric_cols] = self.data[numeric_cols].fillna(method='ffill')
+                self.data[numeric_cols] = self.data[numeric_cols].bfill(limit=5)
+                self.data[numeric_cols] = self.data[numeric_cols].ffill()
             
             elif strategy == 'mean':
                 for col in numeric_cols:
